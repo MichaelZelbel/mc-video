@@ -129,7 +129,8 @@ export const LAUNCHER_STAMP = "Written by mc-video setup.";
 //   PowerShell refuses every .ps1 under a Restricted or AllSigned policy instead of falling back
 //   to the .cmd, so setup writes it only where PowerShell runs it (argv.mjs, ps1Allowed).
 export function launchers(appDir, platform = process.platform, { ps1 = false } = {}) {
-  const script = path.join(appDir, "bin", "mc-video.mjs");
+  // Joined the way the launcher's own system joins paths, whichever computer writes it.
+  const script = (platform === "win32" ? path.win32 : path.posix).join(appDir, "bin", "mc-video.mjs");
   const out = [{ name: "mc-video", body: `#!/bin/sh\nexec node "${script.replace(/\\/g, "/")}" "$@"\n`, mode: 0o755 }];
   if (platform !== "win32") return out;
   out.push({
