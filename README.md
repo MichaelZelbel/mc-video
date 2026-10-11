@@ -56,6 +56,13 @@ speech model and offers to install what is missing, then proves both halves: it 
 them. Run the same line again any time to update; it keeps your caption look and any recipe you
 wrote yourself, and deletes nothing.
 
+On Windows it also writes a PowerShell launcher next to the command, so text you hand it from
+PowerShell (a script for `mc-video hyperframes tts`, say) arrives exactly as written, line breaks
+included. cmd.exe cannot carry a line break (it stops reading at the first one and drops the
+rest), so a command that reaches mc-video cut short through it is refused, never half run. Where
+PowerShell is set to run no scripts at all, setup says so and leaves that launcher out; text that
+runs over several lines then goes in a .txt file (`mc-video hyperframes tts script.txt`).
+
 ## Use
 
 Ask your assistant, in your own words:
