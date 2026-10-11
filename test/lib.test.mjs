@@ -87,13 +87,20 @@ test("Windows looks for winget's ffmpeg before the one on PATH", () => {
   assert.equal(c[1], "ffmpeg");
 });
 
-test("launchers: a shell one everywhere, and a .cmd twin on Windows", () => {
-  const unix = L.launchers("/home/r/.mc-video/app", "linux");
+test("launchers: a shell one everywhere, a .cmd twin on Windows, and a .ps1 only when asked for", () => {
+  const unix = L.launchers("/home/r/.mc-video/app", "linux", { ps1: true });
   assert.deepEqual(unix.map((l) => l.name), ["mc-video"]);
   assert.match(unix[0].body, /exec node ".*\/bin\/mc-video\.mjs" "\$@"/);
   const win = L.launchers("C:\\Users\\r\\.mc-video\\app", "win32");
   assert.deepEqual(win.map((l) => l.name), ["mc-video", "mc-video.cmd"]);
-  assert.match(win[1].body, /node ".*mc-video\.mjs" %\*/);
+  // Git Bash keeps rewriting /c/... paths: almost everything mc-video is given is a path.
+  assert.doesNotMatch(win[0].body, /MSYS/);
+  assert.match(win[1].body, /set "MC_VIDEO_CMDLINE=!CMDCMDLINE!"\r\nsetlocal DisableDelayedExpansion\r\nset MC_VIDEO_LAUNCHER=cmd\r\nnode ".*mc-video\.mjs" %\* --end-of-cmd-args\r\n$/);
+  const ps = L.launchers("C:\\Users\\o'neil\\.mc-video\\app", "win32", { ps1: true });
+  assert.deepEqual(ps.map((l) => l.name), ["mc-video", "mc-video.cmd", "mc-video.ps1"]);
+  assert.equal(ps[2].body.charCodeAt(0), 0xfeff);
+  assert.match(ps[2].body, /& node 'C:\\Users\\o''neil\\\.mc-video\\app\\bin\\mc-video\.mjs' --argv-base64 /);
+  assert.match(ps[2].body, /-is \[array\]\) \{ @\(\$_ \| ForEach-Object \{ \[string\]\$_ \}\) -join ',' \}/, "a,b stays a,b, as it reaches a .cmd");
 });
 
 test("the kit's command folder is used when it exists", () => {

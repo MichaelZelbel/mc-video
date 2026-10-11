@@ -16,6 +16,7 @@ import path from "node:path";
 import readline from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import * as L from "./lib.mjs";
+import { decodeArgv, ps1Allowed, powershellPolicies, LAUNCHER_ENV, CMDLINE_ENV } from "./argv.mjs";
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const VERSION = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, "package.json"), "utf8")).version;
@@ -315,11 +316,18 @@ function stepCommand() {
   }
   const dir = L.binDir();
   fs.mkdirSync(dir, { recursive: true });
-  for (const l of L.launchers(app)) {
+  const policies = isWin ? powershellPolicies() : [];
+  const ps1 = isWin && ps1Allowed(policies);
+  const ps1File = path.join(dir, "mc-video.ps1");
+  // Only a .ps1 this installer wrote is ever removed; one the person wrote is theirs.
+  if (isWin && !ps1 && fs.existsSync(ps1File) && fs.readFileSync(ps1File, "utf8").includes(L.LAUNCHER_STAMP)) fs.rmSync(ps1File, { force: true });
+  for (const l of L.launchers(app, process.platform, { ps1 })) {
     const f = path.join(dir, l.name);
     fs.rmSync(f, { force: true });
     fs.writeFileSync(f, l.body, { mode: l.mode });
   }
+  if (ps1) ok("PowerShell gets its own launcher, so text with line breaks arrives whole");
+  else if (isWin && policies.length) warn(`PowerShell runs no scripts on this computer (${policies.map((p) => `${p.exe}: ${p.policy}`).join(", ")}), so from PowerShell mc-video goes through cmd.exe, which cannot carry a line break. Text that runs over several lines then goes in a .txt file. Set-ExecutionPolicy -Scope CurrentUser RemoteSigned, then this setup again, lifts that.`);
   if (L.onPath(dir)) ok(`mc-video is ready to type (${dir})`);
   else {
     const where = path.join(dir, isWin ? "mc-video.cmd" : "mc-video");
@@ -427,9 +435,20 @@ function check() {
   line(!!cfg.ffmpeg && !!findFfmpeg(cfg).exe, `ffmpeg ${cfg.ffmpeg || ""}`);
   line(!!cfg.python && fs.existsSync(cfg.python) && run(cfg.python, ["-c", "import faster_whisper, PIL"]).status === 0, "the speech model's code");
   if (cfg.godspeed) line(fs.existsSync(path.join(cfg.godspeed, "video", "caption-style.json")), `caption look ${path.join(cfg.godspeed, "video", "caption-style.json")}`);
+  // Said missing only where setup would write it: where PowerShell runs no scripts, setup cannot.
+  if (isWin) {
+    const has = fs.existsSync(path.join(L.binDir(), "mc-video.ps1"));
+    if (has || ps1Allowed(powershellPolicies())) line(has, "the PowerShell launcher (text with line breaks arrives whole)");
+  }
 }
 
-const [sub, ...rest] = process.argv.slice(2);
+// The launchers say how they handed the arguments over (argv.mjs). The markers are read once and
+// taken out of the environment, so nothing mc-video starts mistakes itself for the .cmd's child.
+const launched = decodeArgv(process.argv.slice(2), process.env);
+delete process.env[LAUNCHER_ENV];
+delete process.env[CMDLINE_ENV];
+if (launched.error) fail(launched.error);
+const [sub, ...rest] = launched.argv;
 const flags = parseFlags(rest);
 switch (sub) {
   case "setup":

@@ -119,10 +119,51 @@ export function onPath(dir, envPath = process.env.PATH || "", platform = process
   return envPath.split(sep).filter(Boolean).some((p) => norm(p) === norm(dir));
 }
 
-export function launchers(appDir, platform = process.platform) {
+export const LAUNCHER_STAMP = "Written by mc-video setup.";
+
+// One launcher per shell, each built so what is given arrives exactly as given (argv.mjs):
+// - sh (Linux, macOS, and Git Bash on Windows, which rewrites /c/... paths for node as it should).
+// - .cmd (cmd.exe). It cannot carry a line break, so it marks where its arguments end and
+//   mc-video refuses a line that was cut.
+// - .ps1 (PowerShell, which picks it over the .cmd in the same folder), only when ps1 is true:
+//   PowerShell refuses every .ps1 under a Restricted or AllSigned policy instead of falling back
+//   to the .cmd, so setup writes it only where PowerShell runs it (argv.mjs, ps1Allowed).
+export function launchers(appDir, platform = process.platform, { ps1 = false } = {}) {
   const script = path.join(appDir, "bin", "mc-video.mjs");
   const out = [{ name: "mc-video", body: `#!/bin/sh\nexec node "${script.replace(/\\/g, "/")}" "$@"\n`, mode: 0o755 }];
-  if (platform === "win32") out.push({ name: "mc-video.cmd", body: `@echo off\r\nnode "${script}" %*\r\n`, mode: 0o644 });
+  if (platform !== "win32") return out;
+  out.push({
+    name: "mc-video.cmd",
+    body: [
+      "@echo off",
+      `rem ${LAUNCHER_STAMP} cmd.exe stops reading a command line at its first line break`,
+      "rem and drops the rest. The line as it was given, and a marker after the arguments, let",
+      "rem mc-video see that and refuse instead of running half of it.",
+      "setlocal EnableDelayedExpansion",
+      'set "MC_VIDEO_CMDLINE=!CMDCMDLINE!"',
+      "setlocal DisableDelayedExpansion",
+      "set MC_VIDEO_LAUNCHER=cmd",
+      `node "${script}" %* --end-of-cmd-args`,
+      "",
+    ].join("\r\n"),
+    mode: 0o644,
+  });
+  // PowerShell turns an unquoted a,b into a list; it reaches a .cmd as "a,b", so it is handed
+  // over that way here too, never as "a b". A byte order mark, so Windows PowerShell 5.1 reads
+  // a path with an umlaut in it correctly.
+  if (ps1) out.push({
+    name: "mc-video.ps1",
+    body: "﻿" + [
+      `# ${LAUNCHER_STAMP} PowerShell runs this file in place of mc-video.cmd next to it.`,
+      "# The arguments reach node as one base64 string, so no line break, quote, $ or % in them is",
+      "# changed or cut on the way (cmd.exe stops at the first line break and drops the rest).",
+      "$argvJson = ConvertTo-Json -Compress -InputObject @($args | ForEach-Object { if ($_ -is [array]) { @($_ | ForEach-Object { [string]$_ }) -join ',' } else { [string]$_ } })",
+      `& node '${script.replace(/'/g, "''")}' --argv-base64 ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($argvJson)))`,
+      "exit $LASTEXITCODE",
+      "",
+    ].join("\r\n"),
+    mode: 0o644,
+  });
   return out;
 }
 
