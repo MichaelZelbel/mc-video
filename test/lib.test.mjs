@@ -16,8 +16,8 @@ const godspeedAt = (d) => {
 test("the mission control named on the command line wins, and a folder without AGENTS.md is refused", () => {
   const home = tmp();
   const godspeed = godspeedAt(path.join(home, "elsewhere"));
-  assert.equal(L.findGodspeed({ arg: godspeed, userHome: home, cwd: home }), godspeed);
-  assert.equal(L.findGodspeed({ arg: home, userHome: home, cwd: home }), null);
+  assert.equal(L.findGodspeed({ arg: godspeed, userHome: home, cwd: home, env: {} }), godspeed);
+  assert.equal(L.findGodspeed({ arg: home, userHome: home, cwd: home, env: {} }), null);
 });
 
 test("the mission control recorded by the kit comes before the current folder", () => {
@@ -26,15 +26,33 @@ test("the mission control recorded by the kit comes before the current folder", 
   const here = godspeedAt(path.join(home, "here"));
   fs.mkdirSync(path.join(home, ".godspeed"));
   fs.writeFileSync(path.join(home, ".godspeed", "device.env"), `GODSPEED_PROMPT_SOURCES=hermes\nGODSPEED_DIR=${recorded}\n`);
-  assert.equal(L.findGodspeed({ userHome: home, cwd: here }), recorded);
+  assert.equal(L.findGodspeed({ userHome: home, cwd: here, env: {} }), recorded);
 });
 
 test("without a record, the current folder, then ~/godspeed", () => {
   const home = tmp();
   const here = godspeedAt(path.join(home, "here"));
-  assert.equal(L.findGodspeed({ userHome: home, cwd: here }), here);
+  assert.equal(L.findGodspeed({ userHome: home, cwd: here, env: {} }), here);
   const dflt = godspeedAt(path.join(home, "godspeed"));
-  assert.equal(L.findGodspeed({ userHome: home, cwd: home }), dflt);
+  assert.equal(L.findGodspeed({ userHome: home, cwd: home, env: {} }), dflt);
+});
+
+// The product starts setup with GODSPEED_WORKSPACE naming its mission control (the bundled copy
+// has read it since 3 October 2026); --godspeed still wins over it.
+test("GODSPEED_WORKSPACE comes after --godspeed and before everything else", () => {
+  const home = tmp();
+  const named = godspeedAt(path.join(home, "named"));
+  const workspace = godspeedAt(path.join(home, "workspace"));
+  const recorded = godspeedAt(path.join(home, "recorded"));
+  const here = godspeedAt(path.join(home, "here"));
+  fs.mkdirSync(path.join(home, ".godspeed"));
+  fs.writeFileSync(path.join(home, ".godspeed", "device.env"), `GODSPEED_DIR=${recorded}
+`);
+  const env = { GODSPEED_WORKSPACE: workspace };
+  assert.equal(L.findGodspeed({ arg: named, userHome: home, cwd: here, env }), named, "--godspeed wins");
+  assert.equal(L.findGodspeed({ userHome: home, cwd: here, env }), workspace, "before the kit's record and the current folder");
+  assert.equal(L.findGodspeed({ userHome: home, cwd: here, env: { GODSPEED_WORKSPACE: path.join(home, "no-agents-md") } }), recorded, "a folder without AGENTS.md is passed over");
+  assert.equal(L.findGodspeed({ userHome: home, cwd: here, env: {} }), recorded);
 });
 
 test("recipes go to the visible skills room unless the mission control only has .claude/skills", () => {

@@ -19,11 +19,14 @@ export function nodeMajor(version = process.versions.node) {
   return Number(String(version).split(".")[0]);
 }
 
-// Where the mission control is, in the order a reader would expect: said on the command line, recorded
-// by the kit's installer, the folder you are standing in, then the book's default.
-export function findGodspeed({ arg, cwd = process.cwd(), userHome = os.homedir() } = {}) {
+// Where the mission control is, in the order a reader would expect: said on the command line, named
+// by Godspeed Mission Control in GODSPEED_WORKSPACE when it starts this, recorded by the kit's
+// installer, the folder you are standing in, then the book's default. The same order as the copy
+// bundled with Godspeed Mission Control.
+export function findGodspeed({ arg, cwd = process.cwd(), userHome = os.homedir(), env = process.env } = {}) {
   const looksLikeGodspeed = (d) => d && fs.existsSync(path.join(d, "AGENTS.md"));
   if (arg) return looksLikeGodspeed(path.resolve(arg)) ? path.resolve(arg) : null;
+  if (env.GODSPEED_WORKSPACE && looksLikeGodspeed(env.GODSPEED_WORKSPACE)) return path.resolve(env.GODSPEED_WORKSPACE);
   const envFile = path.join(userHome, ".godspeed", "device.env");
   if (fs.existsSync(envFile)) {
     const m = fs.readFileSync(envFile, "utf8").match(/^\s*GODSPEED_DIR=(.+)$/m);
