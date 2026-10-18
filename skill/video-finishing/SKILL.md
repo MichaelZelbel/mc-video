@@ -11,8 +11,11 @@ reorder or shorten their footage, and you never post anything.
 
 ## First, make sure the tools are there
 
-Run `mc-video check`. Every line should start with `ok`. If one says `missing`, tell the
-person which one and that `mc-video setup` fixes it; do not try to work around it.
+Run `mc-video check`. Every line should start with `ok`. If one says `missing`, the video
+tools are not set up on this computer yet. Tell the person which line, and that one line in a
+terminal sets them up, asking before it installs anything:
+`npx --yes github:MichaelZelbel/mc-video setup`. Leave that to them, and do not try to work
+around it.
 
 ## Which tool for which request
 
