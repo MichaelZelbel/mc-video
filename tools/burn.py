@@ -75,13 +75,30 @@ def _enable_cuda_dlls():
             os.environ["PATH"] = r + os.pathsep + os.environ.get("PATH", "")
 
 
+def read_wav(path):
+    """The 16 kHz mono sound ffmpeg wrote, as the float samples faster-whisper takes.
+
+    Handed over as samples, not as a file name, so faster-whisper never opens the file itself
+    with PyAV. A fresh setup on 18 October 2026 got PyAV 19, whose open() no longer takes an
+    argument faster-whisper 1.2.1 passes, and every caption stopped with "open() got an
+    unexpected keyword argument 'metadata_errors'"."""
+    import wave
+    import numpy as np
+    with wave.open(path, "rb") as w:
+        if w.getnchannels() != 1 or w.getsampwidth() != 2 or w.getframerate() != 16000:
+            sys.exit(f"error: {path} is not the 16 kHz mono sound this expects.")
+        frames = w.readframes(w.getnframes())
+    return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+
+
 def transcribe(wav, model, language):
     _enable_cuda_dlls()
     from faster_whisper import WhisperModel
+    audio = read_wav(wav)
 
     def go(dev, ct):
         m = WhisperModel(model, device=dev, compute_type=ct)
-        segs, info = m.transcribe(wav, word_timestamps=True, vad_filter=True, language=language)
+        segs, info = m.transcribe(audio, word_timestamps=True, vad_filter=True, language=language)
         words = []
         for s in segs:
             for w in (s.words or []):
