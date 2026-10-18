@@ -19,3 +19,12 @@ test("every command package.json declares points at a file", () => {
     assert.ok(existsSync(path.join(ROOT, rel)), `${cmd} -> ${rel} does not exist`);
   }
 });
+
+// The copy bundled with Godspeed Mission Control was made without sample/ until 18 October 2026,
+// so `mc-video setup` run from it stopped at its proof with a missing-file error.
+test("everything package.json ships is here, including the clips the setup's proof uses", () => {
+  for (const rel of pkg.files) assert.ok(existsSync(path.join(ROOT, rel)), `${rel} is missing`);
+  for (const rel of ["sample/sample-vertical.mp4", "sample/title-card/index.html"]) {
+    assert.ok(existsSync(path.join(ROOT, rel)), `${rel} is missing: setup's proof copies it`);
+  }
+});

@@ -7,6 +7,9 @@
 //   mc-video hyperframes <command>            the pinned HyperFrames, without npx
 //   mc-video check                            say what is installed and what is missing
 //
+// Every command also takes --godspeed <folder>: the mission control whose caption look it uses.
+// The assistant's own mc-video always adds it.
+//
 // Run it again any time. It keeps your caption style and anything you wrote yourself, and
 // it deletes nothing.
 import { spawnSync } from "node:child_process";
@@ -422,8 +425,7 @@ async function setup(flags) {
   }
 }
 
-function check() {
-  const cfg = L.readConfig();
+function check(cfg) {
   console.log(`mc-video ${VERSION}`);
   const line = (good, what) => console.log(`${good ? "ok" : "missing"}: ${what}`);
   line(L.nodeMajor() >= 22, `Node.js ${process.versions.node} (22 or newer)`);
@@ -448,21 +450,29 @@ const launched = decodeArgv(process.argv.slice(2), process.env);
 delete process.env[LAUNCHER_ENV];
 delete process.env[CMDLINE_ENV];
 if (launched.error) fail(launched.error);
-const [sub, ...rest] = launched.argv;
-const flags = parseFlags(rest);
+const [given, ...args] = launched.argv;
+// "caption" is what people (and assistants) type as often as "captions".
+const sub = given === "caption" ? "captions" : given;
+const flags = parseFlags(args);
+// --godspeed is mc-video's own option on every command, never passed on (lib.mjs, takeGodspeed).
+const { godspeed: named, rest } = L.takeGodspeed(args);
+const config = () => {
+  const cfg = L.readConfig();
+  return { ...cfg, godspeed: L.chooseGodspeed(cfg.godspeed, named) };
+};
 switch (sub) {
   case "setup":
     await setup(flags);
     break;
   case "captions":
   case "vertical":
-    process.exitCode = runTool(L.readConfig(), sub, rest);
+    process.exitCode = runTool(config(), sub, rest);
     break;
   case "hyperframes":
-    process.exitCode = runHyperframes(L.readConfig(), rest);
+    process.exitCode = runHyperframes(config(), rest);
     break;
   case "check":
-    check();
+    check(config());
     break;
   case "--version":
   case "version":
@@ -477,6 +487,7 @@ switch (sub) {
   mc-video hyperframes <command>            HyperFrames ${L.HYPERFRAMES_VERSION} as installed here: check, render, preview...
   mc-video check                            what is installed and what is missing
 
+Every command also takes --godspeed <folder>, the mission control whose caption look it uses.
 Your caption look: <godspeed>/video/caption-style.json. Animated slides and overlays: ask your
 assistant; it uses the HyperFrames recipes this setup put in your mission control.`);
     if (sub && sub !== "help" && sub !== "--help") process.exitCode = 1;

@@ -160,3 +160,28 @@ test("commands that leave the computer are refused", () => {
   for (const c of ["publish", "cloud", "lambda", "auth", "feedback", "skills"]) assert.ok(L.HF_REFUSED.has(c), c);
   for (const c of ["check", "render", "preview", "init", "snapshot", "add", "catalog"]) assert.ok(!L.HF_REFUSED.has(c), c);
 });
+
+// The assistant's own mc-video ends every line with --godspeed <its mission control> (the kit's
+// wire-assistant.mjs). Until 18 October 2026 captions and vertical handed it on to burn.py, which
+// refused it, so "caption this clip" failed every time it was asked for.
+test("--godspeed is taken out of every command's arguments, wherever it stands", () => {
+  assert.deepEqual(L.takeGodspeed(["clip.mp4", "--godspeed", "/home/sam/godspeed-v2"]), { godspeed: "/home/sam/godspeed-v2", rest: ["clip.mp4"] });
+  assert.deepEqual(L.takeGodspeed(["clip.mp4", "--captions", "--godspeed", "C:\Users\Sam\godspeed-v2"]), { godspeed: "C:\Users\Sam\godspeed-v2", rest: ["clip.mp4", "--captions"] });
+  assert.deepEqual(L.takeGodspeed(["--godspeed=/a", "render", "-o", "out.mp4"]), { godspeed: "/a", rest: ["render", "-o", "out.mp4"] });
+  assert.deepEqual(L.takeGodspeed(["clip.mp4", "--godspeed", "/typed", "--godspeed", "/wired"]).godspeed, "/wired", "the last one wins, as in setup");
+  assert.deepEqual(L.takeGodspeed(["clip.mp4", "--godspeed"]), { godspeed: undefined, rest: ["clip.mp4"] });
+  assert.deepEqual(L.takeGodspeed(["clip with space.mp4", "--language", "de"]), { godspeed: undefined, rest: ["clip with space.mp4", "--language", "de"] });
+});
+
+test("the caption look comes from the named mission control when it has one, else from the one setup recorded", () => {
+  const home = tmp();
+  const recorded = godspeedAt(path.join(home, "recorded"));
+  const named = godspeedAt(path.join(home, "named"));
+  assert.equal(L.chooseGodspeed(recorded, undefined), recorded);
+  assert.equal(L.chooseGodspeed(undefined, named), named, "nothing recorded: the named one");
+  assert.equal(L.chooseGodspeed(recorded, named), recorded, "the named one has no look of its own yet");
+  fs.mkdirSync(path.join(named, "video"));
+  fs.writeFileSync(path.join(named, "video", "caption-style.json"), "{}\n");
+  assert.equal(L.chooseGodspeed(recorded, named), named);
+  assert.equal(L.chooseGodspeed(recorded, path.join(home, "not-a-mission-control")), recorded);
+});

@@ -37,6 +37,34 @@ export function findGodspeed({ arg, cwd = process.cwd(), userHome = os.homedir()
   return looksLikeGodspeed(dflt) ? dflt : null;
 }
 
+// The assistant's own `mc-video` (written by the kit's wire-assistant.mjs) adds
+// `--godspeed <its mission control>` after whatever it was asked to run, so every command takes
+// that option and none passes it on: until 18 October 2026 `captions` and `vertical` handed it to
+// burn.py, which refused it as an unknown option, and asking the assistant to caption a video
+// failed every time. Returns the folder named (the last one wins, as in `setup`) and the rest.
+export function takeGodspeed(args) {
+  const rest = [];
+  let godspeed;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--godspeed") {
+      if (i + 1 < args.length) godspeed = args[++i];
+    } else if (a.startsWith("--godspeed=")) godspeed = a.slice("--godspeed=".length);
+    else rest.push(a);
+  }
+  return { godspeed: godspeed || undefined, rest };
+}
+
+// Whose caption look a command uses: the mission control named on the command line when it is
+// one and has a look of its own (or setup recorded none), otherwise the one setup recorded.
+export function chooseGodspeed(recorded, named, exists = fs.existsSync) {
+  if (!named) return recorded;
+  const dir = path.resolve(named);
+  if (!exists(path.join(dir, "AGENTS.md"))) return recorded;
+  if (!recorded || exists(path.join(dir, "video", "caption-style.json"))) return dir;
+  return recorded;
+}
+
 function countRecipes(dir) {
   try {
     return fs.readdirSync(dir).filter((n) => fs.existsSync(path.join(dir, n, "SKILL.md"))).length;
