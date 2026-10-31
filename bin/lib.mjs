@@ -9,7 +9,21 @@ import path from "node:path";
 export const HYPERFRAMES_TAG = "v0.8.43";
 export const HYPERFRAMES_VERSION = HYPERFRAMES_TAG.slice(1);
 export const MARKER = ".installed-by-mc-video";
-export const RECIPE = "video-finishing";
+
+// The recipes this add-on carries in skill/ and the setup copies into the reader's skills folder,
+// beside the HyperFrames recipes it downloads from the pin. Until 31 October 2026 Godspeed Mission
+// Control handed all four to every new reader whether they made videos or not; now only the people
+// who set up this add-on get them, so they travel with it.
+export const RECIPES = ["video-finishing", "video-captions", "video-hooks", "embedded-captions"];
+// `embedded-captions` is the odd one out: it is HyperFrames' own skill, one of the 21 in v0.8.43
+// (skill/embedded-captions/LICENSE says so, and Apache 2.0 asks us to). It is carried so the
+// reader gets it even when the download cannot be made, but the pinned release's copy is the
+// newer one, so that one wins and this one is only the fallback. It is HyperFrames' either way:
+// it stays out of the mission control's history like the rest of them.
+export const HYPERFRAMES_OWN = ["embedded-captions"];
+// The recipes that are ours to keep: the ones that go into the reader's own history.
+export const OURS = RECIPES.filter((n) => !HYPERFRAMES_OWN.includes(n));
+export const RECIPE = RECIPES[0];
 
 export function home() {
   return process.env.GODSPEED_VIDEO_HOME || path.join(os.homedir(), ".mc-video");
@@ -232,6 +246,38 @@ export function hyperframesSkills(unpackedRoot) {
     .filter((e) => e.isDirectory() && fs.existsSync(path.join(dir, e.name, "SKILL.md")))
     .map((e) => e.name)
     .sort();
+}
+
+// Every recipe into the reader's skills folder: HyperFrames' own from the release the setup just
+// unpacked, then the ones this add-on carries in skill/. A recipe the reader wrote under the same
+// name is never replaced, and the pinned release's copy of a recipe we also carry wins, because
+// it is the newer one. Kept here, away from the download and the talking, so a test can prove the
+// whole room against a mission control in a temporary folder, with no network.
+export function installRecipes({ room, hyperframesRoot = null, pkgRoot, version, adapt = () => {} }) {
+  const written = [];
+  const kept = [];
+  const install = (name, from, changed) => {
+    const dst = path.join(room, name);
+    if (!mayReplace(dst)) {
+      kept.push(name);
+      return;
+    }
+    fs.rmSync(dst, { recursive: true, force: true });
+    copyDir(from, dst);
+    if (changed) adapt(dst);
+    fs.writeFileSync(path.join(dst, MARKER),
+      `mc-video ${version}, HyperFrames ${HYPERFRAMES_TAG}` +
+      (changed ? ". Changed from the original: `npx hyperframes` reads `mc-video hyperframes`, and SKILL.md starts with a note for this mission control.\n" : "\n"));
+    written.push(name);
+  };
+  if (hyperframesRoot) {
+    for (const name of hyperframesSkills(hyperframesRoot)) install(name, path.join(hyperframesRoot, "skills", name), true);
+  }
+  for (const name of RECIPES) {
+    if (written.includes(name) || kept.includes(name)) continue;
+    install(name, path.join(pkgRoot, "skill", name), !OURS.includes(name));
+  }
+  return { written, kept };
 }
 
 // The mission control's .gitignore with one block listing HyperFrames' recipe folders. The block is

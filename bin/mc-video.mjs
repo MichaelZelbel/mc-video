@@ -241,42 +241,37 @@ function runHyperframes(cfg, args) {
 }
 
 async function stepSkills(godspeed) {
-  say(`The recipes in your mission control (HyperFrames ${L.HYPERFRAMES_TAG}, pinned, plus ${L.RECIPE})`);
+  say(`The recipes in your mission control (HyperFrames ${L.HYPERFRAMES_TAG}, pinned, plus ${L.RECIPES.join(", ")})`);
   const room = L.skillsRoom(godspeed);
   fs.mkdirSync(room, { recursive: true });
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mc-video-"));
-  const written = [];
-  const kept = [];
+  let written = [];
+  let kept = [];
+  let hyperframesRoot = null;
+  let failed = false;
   try {
     const tgz = path.join(tmp, "hyperframes.tar.gz");
     await download(`https://codeload.github.com/heygen-com/hyperframes/tar.gz/refs/tags/${L.HYPERFRAMES_TAG}`, tgz);
     const r = run("tar", ["-xzf", "hyperframes.tar.gz"], { cwd: tmp });
     if (r.status !== 0) throw new Error(`tar could not unpack the download: ${r.stderr}`);
     const root = fs.readdirSync(tmp, { withFileTypes: true }).find((e) => e.isDirectory());
-    const src = path.join(tmp, root.name);
-    const install = (name, from, adapt) => {
-      const dst = path.join(room, name);
-      if (!L.mayReplace(dst)) {
-        kept.push(name);
-        return;
-      }
-      fs.rmSync(dst, { recursive: true, force: true });
-      L.copyDir(from, dst);
-      if (adapt) adaptRecipe(dst);
-      fs.writeFileSync(path.join(dst, L.MARKER),
-        `mc-video ${VERSION}, HyperFrames ${L.HYPERFRAMES_TAG}` +
-        (adapt ? ". Changed from the original: `npx hyperframes` reads `mc-video hyperframes`, and SKILL.md starts with a note for this mission control.\n" : "\n"));
-      written.push(name);
-    };
-    for (const name of L.hyperframesSkills(src)) install(name, path.join(src, "skills", name), true);
-    install(L.RECIPE, path.join(PKG_ROOT, "skill", L.RECIPE), false);
+    hyperframesRoot = path.join(tmp, root.name);
   } catch (e) {
     warn(`could not fetch HyperFrames' recipes: ${e.message}. Check the internet connection and run this setup again.`);
-    return { room, written, kept, failed: true };
+    failed = true;
+  }
+  try {
+    // The recipes this add-on carries do not come from the download, so the reader still gets
+    // them when it could not be made.
+    ({ written, kept } = L.installRecipes({ room, hyperframesRoot, pkgRoot: PKG_ROOT, version: VERSION, adapt: adaptRecipe }));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
   ok(`${written.length} recipes in ${room} (your assistant reads that folder)`);
+  if (failed) {
+    if (kept.length) console.log(`   Left alone because you already have a recipe with the same name: ${kept.join(", ")}`);
+    return { room, written, kept, failed: true };
+  }
   if (kept.length) console.log(`   Left alone because you already have a recipe with the same name: ${kept.join(", ")}`);
 
   // Your caption look lives in the mission control, beside your other settings, and is never overwritten.
@@ -292,18 +287,20 @@ async function stepSkills(godspeed) {
   if (fs.existsSync(path.join(godspeed, ".git"))) {
     // HyperFrames' recipes are about 19 MB in close to a thousand files, and the setup fetches
     // them again on every computer. They stay out of the mission control's history; only what is yours
-    // (the recipe that says how you work, and your caption look) goes in.
-    const upstream = written.filter((n) => n !== L.RECIPE).map((n) => path.relative(godspeed, path.join(room, n)));
+    // (the recipes that say how you work, and your caption look) goes in. `embedded-captions` is
+    // HyperFrames' own, carried here or downloaded, so it stays out with the rest of theirs.
+    const upstream = written.filter((n) => !L.OURS.includes(n)).map((n) => path.relative(godspeed, path.join(room, n)));
     const gi = path.join(godspeed, ".gitignore");
     const before = fs.existsSync(gi) ? fs.readFileSync(gi, "utf8") : "";
     const block = L.gitignoreBlock(before, upstream);
     if (block !== before) fs.writeFileSync(gi, block);
-    const mine = [path.relative(godspeed, path.join(room, L.RECIPE)), path.relative(godspeed, styleDir), ".gitignore"];
+    const mine = [...L.OURS.filter((n) => fs.existsSync(path.join(room, n))).map((n) => path.relative(godspeed, path.join(room, n))),
+      path.relative(godspeed, styleDir), ".gitignore"];
     run("git", ["-C", godspeed, "add", "--", ...mine]);
     const staged = run("git", ["-C", godspeed, "diff", "--cached", "--quiet", "--", ...mine]);
     if (staged.status === 1) {
       const c = run("git", ["-C", godspeed, "-c", "user.name=mc-video", "-c", "user.email=mc-video@localhost",
-        "commit", "-q", "-m", `Add the video recipe and caption look (mc-video ${VERSION})`, "--", ...mine]);
+        "commit", "-q", "-m", `Add the video recipes and caption look (mc-video ${VERSION})`, "--", ...mine]);
       if (c.status === 0) ok("saved in your mission control's history, so you can undo it like any other change");
     }
   }
@@ -431,7 +428,7 @@ function check(cfg) {
   line(L.nodeMajor() >= 22, `Node.js ${process.versions.node} (22 or newer)`);
   line(!!cfg.godspeed && fs.existsSync(path.join(cfg.godspeed, "AGENTS.md")), `godspeed ${cfg.godspeed || "(none recorded)"}`);
   const room = cfg.godspeed ? L.skillsRoom(cfg.godspeed) : "";
-  line(!!room && fs.existsSync(path.join(room, L.RECIPE, "SKILL.md")), `the ${L.RECIPE} recipe`);
+  for (const r of L.RECIPES) line(!!room && fs.existsSync(path.join(room, r, "SKILL.md")), `the ${r} recipe`);
   line(!!room && fs.existsSync(path.join(room, "hyperframes", "SKILL.md")), `HyperFrames recipes (${cfg.hyperframes || "?"})`);
   line(hyperframesInstalled(), `HyperFrames ${L.HYPERFRAMES_VERSION} itself (mc-video hyperframes <command>)`);
   line(!!cfg.ffmpeg && !!findFfmpeg(cfg).exe, `ffmpeg ${cfg.ffmpeg || ""}`);

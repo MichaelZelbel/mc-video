@@ -6,6 +6,6 @@
   "pages": {
     "add-ons": ["README.md", "setup/1-what-you-need.md"],
     "skills-list": ["README.md"],
-    "video": ["README.md", "bin/lib.mjs", "setup/1-what-you-need.md"]
+    "video": ["README.md", "bin/lib.mjs", "setup/1-what-you-need.md", "skill/**"]
   }
 }
